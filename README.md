@@ -15,6 +15,7 @@
 | [Day 10](./10.rb) | `3.0ms` | `19.9ms` |
 | [Day 11](./11.rb) | `18.0ms` | `48.0ms` |
 | [Day 12](./12.rb) | `14.6ms` | `199.5ms` |
+| [Day 13](./13.rb) | `1.3ms` | `3.8ms` |
 
-**Total: 772.1ms**
+**Total: 777.1ms**
 <!--- benchmarking table --->
