@@ -1,0 +1,173 @@
+class AmphipodsState<%= amphipods_per_room %>
+
+  AMPHIPODS_PER_ROOM = <%= amphipods_per_room %>
+
+  TOTAL_SIZE = HALLWAY_SIZE + ROOMS * AMPHIPODS_PER_ROOM
+
+  ROOM_FOR = Array.new(TOTAL_SIZE) do |pos|
+    (pos - HALLWAY_SIZE) / AMPHIPODS_PER_ROOM if pos >= HALLWAY_SIZE
+  end
+
+  HALLWAY_POSITION_FOR = Array.new(TOTAL_SIZE) do |pos|
+    if pos < HALLWAY_SIZE
+      pos
+    else
+      2 * (1 + ROOM_FOR[pos])
+    end
+  end
+
+  DISTANCE_TO_HALLWAY_FOR = Array.new(TOTAL_SIZE) do |pos|
+    if pos < HALLWAY_SIZE
+      0
+    else
+      1 + (pos - HALLWAY_SIZE) % AMPHIPODS_PER_ROOM
+    end
+  end
+
+  DISTANCES = Array.new(TOTAL_SIZE) do |pos1|
+    Array.new(TOTAL_SIZE) do |pos2|
+      d = DISTANCE_TO_HALLWAY_FOR[pos1] + DISTANCE_TO_HALLWAY_FOR[pos2]
+      d + (HALLWAY_POSITION_FOR[pos1] - HALLWAY_POSITION_FOR[pos2]).abs
+    end
+  end
+
+  POSITIONS_TO_CHECK = TOTAL_SIZE.times.to_a - ILLEGAL_HALLWAY_POSITIONS
+
+  attr_reader :amphipods
+
+  def initialize(amphipods)
+    @amphipods = amphipods.map(&:freeze).freeze
+  end
+
+  def finished?
+    eql?(finished_state)
+  end
+
+  def occupied
+    @occupied ||= @amphipods.reduce(&:+).freeze
+  end
+
+  def each_amphipod
+    ROOMS.times do |type|
+      @amphipods[type].each do |position|
+        yield type, position
+      end
+    end
+  end
+
+  def legal_moves
+    each_amphipod do |type, position|
+      POSITIONS_TO_CHECK.each do |new_position|
+        next if illegal?(type, position, new_position)
+        new_state = @amphipods.dup
+        new_state[type] = new_state[type] - [position] + [new_position]
+        cost = AMPHIPOD_MOVE_COSTS[type] * DISTANCES[position][new_position]
+        yield self.class.new(new_state), cost
+      end
+    end
+  end
+
+  def illegal?(type, position, new_position)
+    occupied.include?(new_position)                   || \
+
+    hallway_to_hallway?(position, new_position)       || \
+    room_to_same_room?(position, new_position)        || \
+
+    wrong_room?(type, new_position)                   || \
+    already_packed_in_room?(type, position)           || \
+    does_not_pack_room_correctly?(type, new_position) || \
+
+    room_blocked?(position)                           || \
+    room_blocked?(new_position)                       || \
+    hallway_blocked?(position, new_position)
+  end
+
+  def wrong_room?(type, position)
+    return false if position < HALLWAY_SIZE
+    ROOM_FOR[position] != type
+  end
+
+  def already_packed_in_room?(type, position)
+    return false if position < HALLWAY_SIZE
+    return false if ROOM_FOR[position] != type
+    (AMPHIPODS_PER_ROOM - DISTANCE_TO_HALLWAY_FOR[position] + 1).times.all? do |after|
+      @amphipods[type].include?(position + after)
+    end
+  end
+
+  def does_not_pack_room_correctly?(type, position)
+    return false if position < HALLWAY_SIZE
+    (AMPHIPODS_PER_ROOM - DISTANCE_TO_HALLWAY_FOR[position]).times.any? do |after|
+      !@amphipods[type].include?(position + after + 1)
+    end
+  end
+
+  def room_blocked?(position)
+    return false if position < HALLWAY_SIZE
+    (DISTANCE_TO_HALLWAY_FOR[position] - 1).times.any? do |before|
+      occupied.include?(position - before - 1)
+    end
+  end
+
+  def hallway_blocked?(pos1, pos2)
+    pos1 = HALLWAY_POSITION_FOR[pos1]
+    pos2 = HALLWAY_POSITION_FOR[pos2]
+    pos1, pos2 = pos2, pos1 if pos1 > pos2
+
+    (pos1 + 1 .. pos2 - 1).any? do |pos|
+      occupied.include?(pos)
+    end
+  end
+
+  def hallway_to_hallway?(pos1, pos2)
+    pos1 < HALLWAY_SIZE && pos2 < HALLWAY_SIZE
+  end
+
+  def room_to_same_room?(pos1, pos2)
+    room1 = ROOM_FOR[pos1] or return false
+    room2 = ROOM_FOR[pos2] or return false
+    room1 == room2
+  end
+
+  def hash
+    @amphipods.hash
+  end
+
+  def eql?(other)
+    other.is_a?(self.class) && @amphipods.eql?(other.amphipods)
+  end
+
+  def to_s
+    hallway = Array.new(HALLWAY_SIZE) { '.' }
+    room_row = Array.new(AMPHIPODS_PER_ROOM) { Array.new(ROOMS) { '.' } }
+    each_amphipod do |type, position|
+      type = ('A'.ord + type).chr
+      if position < HALLWAY_SIZE
+        hallway[position] = type
+      else
+        room_row[DISTANCE_TO_HALLWAY_FOR[position] - 1][ROOM_FOR[position]] = type
+      end
+    end
+
+    io = StringIO.new
+    io.puts '█' * (HALLWAY_SIZE + 2)
+    io.puts "█#{hallway.join}█"
+    padding = "██"
+    room_row.each_with_index do |row, i|
+      row.map! { |c| "█#{c}" }
+      io.puts "#{padding}#{row.join}█#{padding}"
+      padding = "  "
+    end
+    io.puts "  #{'█' * (HALLWAY_SIZE - 2)}"
+    io.string
+  end
+
+  FINISHED_STATE = new(
+    (HALLWAY_SIZE ... TOTAL_SIZE).each_slice(AMPHIPODS_PER_ROOM).map do |room|
+      Set.new(room)
+    end
+  )
+
+  self
+
+end
